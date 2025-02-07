@@ -46,35 +46,36 @@ export class LLMModule {
     // 短期メモリから過去のやり取りを取得（簡易的に連結するだけ）
     const memoryContents = this.memoryModule.getAllMemory().join("\n");
 
-    // プロンプト（text-davinci-003 向けの例）
-    const prompt = `
-You are a helpful AI assistant with some emotional states.
-Your current emotion levels are: 
- - Joy: ${currentEmotion.joy}
- - Anger: ${currentEmotion.anger}
- - Sadness: ${currentEmotion.sadness}
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a helpful AI assistant with emotional states.
+Your current emotion levels are:
+- Joy: ${currentEmotion.joy}
+- Anger: ${currentEmotion.anger}
+- Sadness: ${currentEmotion.sadness}
 
 Recent conversation memory:
 ${memoryContents}
 
-Now respond to the user's latest input below with a short message:
-User Input: ${userText}
-    `.trim();
-
-    try {
-      // 公式Docs準拠: `openai.completions.create(...)`
-      const completion = await this.openai.completions.create({
-        model: "text-davinci-003",
-        prompt: prompt,
-        max_tokens: 100,
+Please respond in Japanese with a short message that reflects your emotional state.`
+          },
+          {
+            role: "user",
+            content: userText
+          }
+        ],
+        max_tokens: 150,
         temperature: 0.7,
       });
 
-      // completion.choices[0].text に生成結果が格納される
-      return completion.choices[0].text?.trim() || "(No output)";
+      return completion.choices[0].message.content?.trim() || "(No output)";
     } catch (err) {
       console.error("OpenAI API Error:", err);
-      return "I'm sorry, but something went wrong.";
+      return "申し訳ありません。エラーが発生しました。";
     }
   }
 }

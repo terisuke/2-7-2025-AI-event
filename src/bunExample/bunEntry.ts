@@ -1,5 +1,5 @@
-import OpenAI from 'openai';
 import { config } from 'dotenv';
+import OpenAI from 'openai';
 import { createInterface } from 'readline';
 
 // 環境変数の読み込み
@@ -56,7 +56,8 @@ async function main() {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: messages,
-        store: true,
+        temperature: 0.7,
+        max_tokens: 150
       });
 
       console.log(completion.choices[0].message);

@@ -10,24 +10,15 @@ import { EmotionModule } from "./modules/EmotionModule";
 import { LLMModule } from "./modules/LLMModule";
 import { MemoryModule } from "./modules/MemoryModule";
 
-// メイン関数
 async function main() {
   const prompt = promptSync();
 
-  // 1. グローバルワークスペースと統合度メーターを用意
   const workspace = new GlobalWorkspaceManager();
   const integrationMeter = new IntegrationMeter();
 
-  // 2. モジュール生成
   const memoryModule = new MemoryModule(workspace);
   const emotionModule = new EmotionModule(workspace);
   const llmModule = new LLMModule(workspace, memoryModule, emotionModule);
-
-  // --------------------------------------------------------------------
-  // ★ GWT + IntegrationMeter 連携
-  //    publish() のたびにイベントIDを作成 → 各モジュールが反応したらカウント
-  //    ただし今回は手動で処理フローを挟む簡易実装に留める
-  // --------------------------------------------------------------------
 
   // GlobalWorkspaceManager の publish を軽くラップして IntegrationMeter で計測する例:
   const originalPublish = workspace.publish.bind(workspace);
@@ -61,7 +52,13 @@ async function main() {
   decorateModulesWithIntegrationReaction(emotionModule, integrationMeter, () => currentEventId);
   decorateModulesWithIntegrationReaction(llmModule, integrationMeter, () => currentEventId);
 
-  // ユーザ対話ループ
+  // SYSTEM_RESPONSE を表示するための購読を追加
+  workspace.subscribe((event: GWTEvent) => {
+    if (event.type === "SYSTEM_RESPONSE") {
+      console.log("AI>", event.payload);
+    }
+  });
+
   console.log("=== Simple GWT-like AI Demo ===");
   console.log("Type your message. Type 'exit' to quit.\n");
 
@@ -72,17 +69,12 @@ async function main() {
       break;
     }
 
-    // ここでユーザ入力イベントをパブリッシュ
     const userEvent: GWTEvent = {
       type: "USER_INPUT",
       payload: userInput,
       timestamp: Date.now(),
     };
     workspace.publish(userEvent);
-
-    // LLMからの応答はSYSTEM_RESPONSEイベントとしてpublishされる。
-    // その通知を受け取ったあとにコンソール表示するのはモジュール内orここで行うか設計次第。
-    // 今回は index.ts 側でGWTをsubscribeして出力する例を入れてもOK。
   }
 }
 
