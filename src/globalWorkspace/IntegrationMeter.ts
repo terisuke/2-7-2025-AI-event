@@ -2,16 +2,16 @@
 import type { GWTEvent } from "./GlobalWorkspaceManager";
 
 /**
- * 同一イベントへの反応数をカウントして
- * "Integration Score" をシンプルに算出する。
+ * 同一イベントへの反応数をカウントし
+ * "Integration Score" をシンプルに算出する例。
  */
 export class IntegrationMeter {
   private currentEventId: number = 0;
-  private eventReactionCountMap: Map<number, number> = new Map(); 
+  private eventReactionCountMap: Map<number, number> = new Map();
   private lastIntegrationScore: number = 0;
 
   private generateEventId() {
-    // 適当なID割り振り
+    // 適当なIDを連番で付与
     return ++this.currentEventId;
   }
 
@@ -26,8 +26,8 @@ export class IntegrationMeter {
   }
 
   /**
-   * モジュールがイベントに反応したとき呼ぶことで
-   * そのイベントの反応数をインクリメント。
+   * モジュールがイベントに反応したとき呼び出し、
+   * そのイベントの反応数をインクリメントする。
    */
   onModuleReaction(eventId: number) {
     const count = this.eventReactionCountMap.get(eventId) ?? 0;
@@ -35,15 +35,16 @@ export class IntegrationMeter {
   }
 
   /**
-   * イベントが一通り処理されたら、最終的な反応数を元に
-   * シンプルな統合度を更新・返却。
+   * イベント処理が一巡したタイミングでスコアを確定
    */
   finalizeEventScore(eventId: number) {
     const finalCount = this.eventReactionCountMap.get(eventId) ?? 0;
-    // ここでは反応したモジュール数がそのままスコア。
+    // ここでは単純に「反応モジュール数」をスコアとする
     this.lastIntegrationScore = finalCount;
-    // マップから削除してメモリ整理
+
+    // 後処理
     this.eventReactionCountMap.delete(eventId);
+
     return finalCount;
   }
 

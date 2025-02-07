@@ -14,12 +14,11 @@ export class LLMModule {
     private emotionModule: EmotionModule,
     private moduleName: string = "LLMModule"
   ) {
-    // OpenAI公式の新バージョン (v4+) での使い方
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY || "",
     });
 
-    // グローバルワークスペースのイベントに購読
+    // GWTへのイベント購読
     this.workspace.subscribe((event) => this.handleEvent(event));
   }
 
@@ -41,10 +40,26 @@ export class LLMModule {
   }
 
   async generateResponse(userText: string): Promise<string> {
-    // 感情状態を取得
+    // 現在の感情状態
     const currentEmotion = this.emotionModule.getEmotion();
-    // 短期メモリから過去のやり取りを取得（簡易的に連結するだけ）
+
+    // 過去メモリ（短期）を連結
     const memoryContents = this.memoryModule.getAllMemory().join("\n");
+
+    // 簡易的に systemメッセージに感情を反映
+    // → 感情値が上がるたび、ここが変わり続ける「疑似的な連続プロンプト更新」になる
+    const systemPrompt = `
+      あなたは「感情状態」を持つAIアシスタントです。
+      現在の感情レベルは以下:
+      - Joy: ${currentEmotion.joy}
+      - Anger: ${currentEmotion.anger}
+      - Sadness: ${currentEmotion.sadness}
+
+      過去の会話:
+      ${memoryContents}
+
+      あなたは上記の感情を自然に反映した日本語の返答を行ってください。
+    `;
 
     try {
       const completion = await this.openai.chat.completions.create({
@@ -52,27 +67,23 @@ export class LLMModule {
         messages: [
           {
             role: "system",
-            content: `You are a helpful AI assistant with emotional states.
-Your current emotion levels are:
-- Joy: ${currentEmotion.joy}
-- Anger: ${currentEmotion.anger}
-- Sadness: ${currentEmotion.sadness}
-
-Recent conversation memory:
-${memoryContents}
-
-Please respond in Japanese with a short message that reflects your emotional state.`
+            content: systemPrompt,
           },
           {
             role: "user",
-            content: userText
-          }
+            content: userText,
+          },
         ],
         max_tokens: 150,
         temperature: 0.7,
       });
 
-      return completion.choices[0].message.content?.trim() || "(No output)";
+      const text = completion.choices[0].message.content?.trim() || "(No output)";
+
+      // LLMの応答をメモリに保存 (短期的に)
+      this.memoryModule.storeMemory("AI回答: " + text);
+
+      return text;
     } catch (err) {
       console.error("OpenAI API Error:", err);
       return "申し訳ありません。エラーが発生しました。";

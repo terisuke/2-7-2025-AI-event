@@ -24,8 +24,7 @@ export class GlobalWorkspaceManager {
    * イベントをパブリッシュして、全サブスクライバに通知
    */
   publish(event: GWTEvent) {
-    // フォアグラウンド（意識の舞台）に上げる簡単な例: イベントが "USER_INPUT" なら必ず最優先とする等
-    // ここでは単純に常に最新のイベントをforegroundとする。
+    // フォアグラウンド（意識の舞台）に上げる簡単な例: 最新イベントをforegroundとする
     this.foregroundEvent = event;
 
     // 全モジュールに通知

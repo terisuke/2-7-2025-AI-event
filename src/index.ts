@@ -11,7 +11,6 @@ import { LLMModule } from "./modules/LLMModule";
 import { MemoryModule } from "./modules/MemoryModule";
 
 async function main() {
-  // Node/Bun 標準の readline インターフェースを用いて対話
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout
@@ -27,7 +26,7 @@ async function main() {
   const emotionModule = new EmotionModule(workspace);
   const llmModule = new LLMModule(workspace, memoryModule, emotionModule);
 
-  // publishをラップしてIntegrationMeter計測
+  // publish をラップし、毎イベントごとに IntegrationMeter を計測
   const originalPublish = workspace.publish.bind(workspace);
   let currentEventId: number | null = null;
 
@@ -38,7 +37,7 @@ async function main() {
     // 本来の publish
     originalPublish(event);
 
-    // モジュールの非同期応答後にスコアを確定
+    // モジュールの非同期応答を少し待ってからスコア確定 (適当な遅延 500ms)
     setTimeout(() => {
       if (currentEventId !== null) {
         const score = integrationMeter.finalizeEventScore(currentEventId);
@@ -49,29 +48,32 @@ async function main() {
     }, 500);
   };
 
-  // 各モジュールの handleEvent の先頭で .onModuleReaction(eid) を呼ぶようデコレート
+  // 各モジュールの handleEvent をデコレートして onModuleReaction を呼ぶ
   decorateModulesWithIntegrationReaction(memoryModule, integrationMeter, () => currentEventId);
   decorateModulesWithIntegrationReaction(emotionModule, integrationMeter, () => currentEventId);
   decorateModulesWithIntegrationReaction(llmModule, integrationMeter, () => currentEventId);
 
-  // SYSTEM_RESPONSE イベントをコンソール表示する購読
+  // SYSTEM_RESPONSE イベントをコンソール表示
   workspace.subscribe((event: GWTEvent) => {
     if (event.type === "SYSTEM_RESPONSE") {
       console.log("AI>", event.payload);
     }
+    // EMOTION_OUTPUT もコンソール表示してみる
+    if (event.type === "EMOTION_OUTPUT") {
+      console.log("AI-EmotionReport>", event.payload);
+    }
   });
 
-  // --- ユーザー入力ループ (非同期) ---
+  // --- ユーザー入力ループ ---
   const askUser = (): void => {
     rl.question("あなた: ", async (input) => {
-      // exitなら終了
       if (!input || input.toLowerCase() === "exit") {
         console.log("対話を終了します。");
         rl.close();
         return;
       }
 
-      // USER_INPUTイベント発行
+      // USER_INPUTイベントを発行
       const userEvent: GWTEvent = {
         type: "USER_INPUT",
         payload: input,
@@ -79,18 +81,23 @@ async function main() {
       };
       workspace.publish(userEvent);
 
-      // 再帰的に次の入力を促す
+      // 再帰的に呼び出し
       askUser();
     });
   };
 
-  // 最初の呼び出し
   askUser();
+
+  // --- 感情を定期的に減衰させる例 ---
+  //  数秒おきに emotionModule.decayEmotion() を呼んで、徐々に感情を冷ます（任意）
+  setInterval(() => {
+    emotionModule.decayEmotion();
+  }, 10000); // 10秒ごとに感情を少し冷ます
 }
 
 /**
- * 各モジュールの handleEvent をラップし、モジュールがイベントに反応するたび
- * integrationMeter.onModuleReaction を呼ぶためのユーティリティ。
+ * 各モジュールの handleEvent をラップし、
+ * 反応があったことを IntegrationMeter に通知するユーティリティ
  */
 function decorateModulesWithIntegrationReaction(
   moduleInstance: any,
@@ -99,13 +106,12 @@ function decorateModulesWithIntegrationReaction(
 ) {
   if (typeof moduleInstance.handleEvent === "function") {
     const originalHandler = moduleInstance.handleEvent.bind(moduleInstance);
+
     moduleInstance.handleEvent = (event: GWTEvent) => {
-      // モジュールがイベントに反応しているのでカウント
       const eid = getEventId();
       if (eid !== null) {
         meter.onModuleReaction(eid);
       }
-      // オリジナルの処理
       originalHandler(event);
     };
   }
