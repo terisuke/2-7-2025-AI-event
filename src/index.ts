@@ -2,7 +2,7 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 
-import promptSync from "prompt-sync";
+import { createInterface } from "readline";
 import type { GWTEvent } from "./globalWorkspace/GlobalWorkspaceManager";
 import { GlobalWorkspaceManager } from "./globalWorkspace/GlobalWorkspaceManager";
 import { IntegrationMeter } from "./globalWorkspace/IntegrationMeter";
@@ -11,8 +11,15 @@ import { LLMModule } from "./modules/LLMModule";
 import { MemoryModule } from "./modules/MemoryModule";
 
 async function main() {
-  const prompt = promptSync();
+  // Node/Bun 標準の readline インターフェースを用いて対話
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
 
+  console.log("AIとの対話を開始します。終了するには \"exit\" と入力してください。");
+
+  // --- GWTマネージャと各モジュールの初期化 ---
   const workspace = new GlobalWorkspaceManager();
   const integrationMeter = new IntegrationMeter();
 
@@ -20,21 +27,18 @@ async function main() {
   const emotionModule = new EmotionModule(workspace);
   const llmModule = new LLMModule(workspace, memoryModule, emotionModule);
 
-  // GlobalWorkspaceManager の publish を軽くラップして IntegrationMeter で計測する例:
+  // publishをラップしてIntegrationMeter計測
   const originalPublish = workspace.publish.bind(workspace);
   let currentEventId: number | null = null;
 
   workspace.publish = (event: GWTEvent) => {
-    // 新しいイベントなら IntegrationMeter でIDを発行
-    // (今回は毎回 "新しいイベント" と仮定)
+    // 毎回新しいイベントIDを発行
     currentEventId = integrationMeter.onNewEvent(event);
 
-    // 実際の publish
+    // 本来の publish
     originalPublish(event);
 
-    // ここで各モジュールは async で処理する可能性があるため、
-    // 全モジュールの処理が完了した"後"に finalizeEventScore する仕組みを
-    // 簡易的に setTimeout などで実行する。
+    // モジュールの非同期応答後にスコアを確定
     setTimeout(() => {
       if (currentEventId !== null) {
         const score = integrationMeter.finalizeEventScore(currentEventId);
@@ -42,56 +46,66 @@ async function main() {
         console.log(`[IntegrationMeter] Current Integration Score: ${integrationMeter.getCurrentIntegrationScore()}`);
         currentEventId = null;
       }
-    }, 500); // 0.5秒後にスコア確定 (LLM応答待ちの都合で少し遅らせる)
+    }, 500);
   };
 
-  // 同様に各モジュールの「反応」で integrationMeter.onModuleReaction を呼ぶ仕組みがいる。
-  // 今回は非常にシンプルに、各モジュールの handleEvent 冒頭で呼んでもらう形にしてもOK。
-  // ただしMemoryModuleやEmotionModule内部を改修するのも面倒なので、ここではデコレーションで対処。
+  // 各モジュールの handleEvent の先頭で .onModuleReaction(eid) を呼ぶようデコレート
   decorateModulesWithIntegrationReaction(memoryModule, integrationMeter, () => currentEventId);
   decorateModulesWithIntegrationReaction(emotionModule, integrationMeter, () => currentEventId);
   decorateModulesWithIntegrationReaction(llmModule, integrationMeter, () => currentEventId);
 
-  // SYSTEM_RESPONSE を表示するための購読を追加
+  // SYSTEM_RESPONSE イベントをコンソール表示する購読
   workspace.subscribe((event: GWTEvent) => {
     if (event.type === "SYSTEM_RESPONSE") {
       console.log("AI>", event.payload);
     }
   });
 
-  console.log("=== Simple GWT-like AI Demo ===");
-  console.log("Type your message. Type 'exit' to quit.\n");
+  // --- ユーザー入力ループ (非同期) ---
+  const askUser = (): void => {
+    rl.question("あなた: ", async (input) => {
+      // exitなら終了
+      if (!input || input.toLowerCase() === "exit") {
+        console.log("対話を終了します。");
+        rl.close();
+        return;
+      }
 
-  while (true) {
-    const userInput = prompt("You> ");
-    if (!userInput || userInput.toLowerCase() === "exit") {
-      console.log("Exiting...");
-      break;
-    }
+      // USER_INPUTイベント発行
+      const userEvent: GWTEvent = {
+        type: "USER_INPUT",
+        payload: input,
+        timestamp: Date.now(),
+      };
+      workspace.publish(userEvent);
 
-    const userEvent: GWTEvent = {
-      type: "USER_INPUT",
-      payload: userInput,
-      timestamp: Date.now(),
-    };
-    workspace.publish(userEvent);
-  }
+      // 再帰的に次の入力を促す
+      askUser();
+    });
+  };
+
+  // 最初の呼び出し
+  askUser();
 }
 
 /**
- * 各モジュールの handleEvent をラップして、イベントを受け取るたびに
- * integrationMeter.onModuleReaction(eventId) を呼ぶためのユーティリティ。
+ * 各モジュールの handleEvent をラップし、モジュールがイベントに反応するたび
+ * integrationMeter.onModuleReaction を呼ぶためのユーティリティ。
  */
-function decorateModulesWithIntegrationReaction(moduleInstance: any, meter: IntegrationMeter, getEventId: () => number | null) {
+function decorateModulesWithIntegrationReaction(
+  moduleInstance: any,
+  meter: IntegrationMeter,
+  getEventId: () => number | null
+) {
   if (typeof moduleInstance.handleEvent === "function") {
     const originalHandler = moduleInstance.handleEvent.bind(moduleInstance);
     moduleInstance.handleEvent = (event: GWTEvent) => {
-      // モジュールがイベントに反応しているのでカウントアップ
+      // モジュールがイベントに反応しているのでカウント
       const eid = getEventId();
       if (eid !== null) {
         meter.onModuleReaction(eid);
       }
-      // 本来の処理
+      // オリジナルの処理
       originalHandler(event);
     };
   }
