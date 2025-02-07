@@ -58,7 +58,7 @@ async function main() {
     if (event.type === "SYSTEM_RESPONSE") {
       console.log("AI>", event.payload);
     }
-    // EMOTION_OUTPUT もコンソール表示してみる
+    // EMOTION_OUTPUT もコンソール表示
     if (event.type === "EMOTION_OUTPUT") {
       console.log("AI-EmotionReport>", event.payload);
     }
@@ -89,7 +89,6 @@ async function main() {
   askUser();
 
   // --- 感情を定期的に減衰させる例 ---
-  //  数秒おきに emotionModule.decayEmotion() を呼んで、徐々に感情を冷ます（任意）
   setInterval(() => {
     emotionModule.decayEmotion();
   }, 10000); // 10秒ごとに感情を少し冷ます

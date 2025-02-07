@@ -26,7 +26,6 @@ export class EmotionModule {
   updateEmotion(text: string) {
     // 超単純な例:
     // "happy" を含めば joy+1, "angry" を含めば anger+1, "sad" を含めば sadness+1
-    // 実際には自然言語処理で解析すればよい
     if (text.includes("happy")) {
       this.emotion.joy += 1;
     }

@@ -47,7 +47,7 @@ export class LLMModule {
     const memoryContents = this.memoryModule.getAllMemory().join("\n");
 
     // 簡易的に systemメッセージに感情を反映
-    // → 感情値が上がるたび、ここが変わり続ける「疑似的な連続プロンプト更新」になる
+    // → 感情値が上がるたび、ここが変わり続ける疑似連続プロンプト
     const systemPrompt = `
       あなたは「感情状態」を持つAIアシスタントです。
       現在の感情レベルは以下:
@@ -62,6 +62,7 @@ export class LLMModule {
     `;
 
     try {
+      // ★ model名を修正
       const completion = await this.openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
@@ -80,7 +81,7 @@ export class LLMModule {
 
       const text = completion.choices[0].message.content?.trim() || "(No output)";
 
-      // LLMの応答をメモリに保存 (短期的に)
+      // LLMの応答をメモリに保存 (短期的)
       this.memoryModule.storeMemory("AI回答: " + text);
 
       return text;
